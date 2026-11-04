@@ -1,4 +1,4 @@
-// Interactive 3D Cyber Globe (Side-Locked Fix)
+// Interactive 3D Cyber Globe (Full Scroll-Lock Fix & Fluid Resizer)
 (function () {
   const pins = [
     { label: "Development of Media and Globalization", lat: 51.5, lon: -0.1, target: "media" },
@@ -14,7 +14,7 @@
     pin: 0x00e5ff
   };
 
-  const globeStage = document.getElementById("globeContainer");
+  const globeStage = document.getElementById("globeContainer") || document.getElementById("globe-stage");
   const globeTooltip = document.getElementById("globe-tooltip");
 
   if (!globeStage || typeof THREE === "undefined") return;
@@ -24,7 +24,6 @@
 
   const globeRadius = 1.95;
   const globeGroup = new THREE.Group();
-
   const bounds = globeStage.getBoundingClientRect();
   const width = bounds.width || 400;
   const height = bounds.height || 400;
@@ -41,13 +40,13 @@
   const scene = new THREE.Scene();
   scene.add(globeGroup);
 
-  // Lighting
+  // Lighting Setup
   scene.add(new THREE.AmbientLight(0x79cff1, 1.6));
   const keyLight = new THREE.PointLight(0x45caff, 22, 18);
   keyLight.position.set(-4, 3, 6);
   scene.add(keyLight);
 
-  // Wireframe Ocean Globe Core
+  // Ocean Core Mesh
   const ocean = new THREE.Mesh(
     new THREE.SphereGeometry(globeRadius, 48, 48),
     new THREE.MeshPhongMaterial({
@@ -70,7 +69,7 @@
     );
   }
 
-  // 5 Pins Placement
+  // Location Pins Setup
   const pinMeshes = [];
   const pinRecords = [];
   const pinGeo = new THREE.SphereGeometry(0.05, 16, 16);
@@ -93,14 +92,13 @@
 
     pinGroup.add(core, hitArea);
     globeGroup.add(pinGroup);
-
     pinMeshes.push(hitArea);
     pinRecords.push({ pin, pinGroup, phase: index * 1.5, visible: false });
   });
 
   globeGroup.rotation.y = -THREE.MathUtils.degToRad(125);
 
-  // Interaction handlers
+  // Interaction Handlers (Fixed for smooth mobile page scrolling)
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const projectedPosition = new THREE.Vector3();
@@ -117,17 +115,22 @@
     renderer.setSize(rect.width, rect.height, false);
   }
 
+  // 1. POINTER DOWN (Omitted setPointerCapture to allow vertical scrolling on mobile)
   globeStage.addEventListener("pointerdown", event => {
     if (event.button !== 0) return;
     pointerDown = { id: event.pointerId, x: event.clientX, y: event.clientY, rotX: globeGroup.rotation.x, rotY: globeGroup.rotation.y };
     dragging = false;
   });
 
+  // 2. POINTER MOVE (Only rotates globe on horizontal drag; lets browser handle vertical scroll)
   globeStage.addEventListener("pointermove", event => {
     if (pointerDown) {
       const dx = event.clientX - pointerDown.x;
       const dy = event.clientY - pointerDown.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) dragging = true;
+
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 5) {
+        dragging = true;
+      }
 
       if (dragging) {
         globeGroup.rotation.y = pointerDown.rotY + dx * 0.006;
@@ -141,6 +144,7 @@
     const rect = globeStage.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(pinMeshes, false)[0];
 
@@ -159,6 +163,7 @@
     }
   });
 
+  // 3. POINTER UP
   globeStage.addEventListener("pointerup", () => {
     if (!dragging && hoveredPin) {
       const el = document.getElementById(hoveredPin.pin.target);
@@ -168,8 +173,16 @@
     dragging = false;
   });
 
+  // Dynamic window and observer resizers
   window.addEventListener("resize", resizeGlobe);
+  window.addEventListener("orientationchange", resizeGlobe);
 
+  if (window.ResizeObserver) {
+    const resizeObserver = new ResizeObserver(resizeGlobe);
+    resizeObserver.observe(globeStage);
+  }
+
+  // Animation Loop
   function animate(now) {
     requestAnimationFrame(animate);
 
@@ -189,7 +202,7 @@
       hoveredPin.pinGroup.getWorldPosition(projectedPosition);
       projectedPosition.project(camera);
       globeTooltip.style.left = `${((projectedPosition.x + 1) / 2) * rect.width}px`;
-      globeTooltip.style.top = `${((1 - projectedPosition.y) / 2) * rect.height - 20}px`;
+      globeTooltip.style.top = `${((1 - projectedPosition.y) / 2) * rect.height}px`;
     }
 
     renderer.render(scene, camera);
